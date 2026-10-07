@@ -1,5 +1,9 @@
 # RVM — The Virtual Machine Built for the Agentic Age
 
+<!-- readme-motion: hero -->
+<a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/hero.svg" alt="RVM: a runtime built around agents. A rotating four-dimensional wireframe, communication field and orange trajectory introduce capability-governed agent execution." width="100%"></a>
+<!-- /readme-motion: hero -->
+
 [![Rust](https://img.shields.io/badge/Rust-1.77+-orange.svg)](https://www.rust-lang.org)
 [![no_std](https://img.shields.io/badge/no__std-compatible-green.svg)](https://doc.rust-lang.org/reference/names/preludes.html)
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
@@ -14,6 +18,17 @@
 > **19 runtime and library crates, plus integration and benchmark packages.** RVM automatically detects new [Claude Code](https://www.npmjs.com/package/@anthropic-ai/claude-code) releases, runs its release workflow, and publishes nightly builds. See [Releases](https://github.com/ruvnet/rvm/releases) | [User Guide](userguide/) | [pi.ruv.io](https://pi.ruv.io)
 
 > Part of the [RuVector](https://github.com/ruvnet/RuVector) ecosystem. Uses [RuVix](ruvector/crates/ruvix/) kernel primitives and [RVF](ruvector/crates/rvf/) package format. Designed for [Cognitum](https://cognitum.one) Seed, Appliance, and future chip targets.
+
+<!-- readme-motion: trailer -->
+<a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/trailer.svg" alt="RVM in motion: four animated architecture and workflow chapters. Open the complete walkthrough." width="100%"></a>
+
+[**Explore the full animated walkthrough →**](docs/visual-walkthrough.md) · 12 chapters · 96-second full tour · 32-second preview
+
+<table>
+<tr><td width="50%"><a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/icon-isolation.svg" width="48" height="48" alt="Isolate: Capability-governed isolation."></a><br><strong>Isolate</strong><br>Capability boundaries</td><td width="50%"><a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/icon-adapt.svg" width="48" height="48" alt="Adapt: Graph-aware partition placement."></a><br><strong>Adapt</strong><br>Coherence-driven placement</td></tr>
+<tr><td width="50%"><a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/icon-remember.svg" width="48" height="48" alt="Reconstruct: Tiered state and checkpoint reconstruction."></a><br><strong>Reconstruct</strong><br>Tiered state and checkpoints</td><td width="50%"><a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/icon-witness.svg" width="48" height="48" alt="Witness: Append-only evidence for privileged transitions."></a><br><strong>Witness</strong><br>Hash-chained evidence</td></tr>
+</table>
+<!-- /readme-motion: trailer -->
 
 Traditional hypervisors were built for an era of static server workloads —
 long-running VMs with predictable resource needs. AI agents are different.
@@ -61,6 +76,10 @@ RVM:                ┌─A──B─┐  ┌─C─┐  D    (dynamic, agent-dr
 
 ## Why RVM?
 
+<a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/header-why.svg" alt="RVM coherence domains: isolation follows communication and trust." width="100%"></a>
+
+[Follow the coherence loop](docs/visual-walkthrough.md#coherence) · [Watch the security gate](docs/visual-walkthrough.md#security) · [Explore memory tiers](docs/visual-walkthrough.md#memory)
+
 **Dynamic Re-isolation and Self-Healing Boundaries.** Because RVM uses
 graph-theoretic mincut algorithms, it can dynamically restructure its isolation
 boundaries to match how workloads actually communicate. If an agent in one
@@ -102,6 +121,13 @@ provided by any existing embedded operating system.
 ---
 
 ## Architecture
+
+<a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/header-architecture.svg" alt="RVM architecture, layers, kernel objects, and dependencies." width="100%"></a>
+
+<a href="docs/visual-walkthrough.md#architecture"><img src="docs/assets/visuals/01-architecture.svg" alt="An agent-native stack. Machine entry, the core, coherence, adapters, and persistent state." width="100%"></a>
+
+<details>
+<summary>Text architecture and crate relationships</summary>
 
 ```
 +----------------------------------------------------------+
@@ -145,6 +171,8 @@ Layer 1: RVM Core (Rust, no_std)
 Layer 0: Machine Entry (assembly, <500 LoC)
          reset vector │ trap handlers │ context switch
 ```
+
+</details>
 
 ### First-Class Kernel Objects
 
@@ -216,6 +244,8 @@ rvm-types (foundation, no deps)
 ---
 
 ## Build
+
+<a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/header-build.svg" alt="Build, test, and run RVM using the platform quick start." width="100%"></a>
 
 ```bash
 # Check (no_std by default)
@@ -729,6 +759,8 @@ node dist/cli.js h "deploy"   # howto
 
 ## Governed `ruv://` Context
 
+<a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/header-context.svg" alt="Capability-governed context, immutable revisions, and receipts." width="100%"></a>
+
 [![The ruv:// Namespace — a URI that grants nothing](docs/ruv-context/preview.svg)](https://ruvnet.github.io/rvm/ruv-context/)
 
 **→ [Read the illustrated guide](https://ruvnet.github.io/rvm/ruv-context/)** — why ambient
@@ -818,6 +850,8 @@ evidence.
 
 ## RuVector Integration
 
+<a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/header-ecosystem.svg" alt="RVM, RuVector, RVF, and the agent infrastructure ecosystem." width="100%"></a>
+
 The full [RuVector](https://github.com/ruvnet/RuVector) ecosystem is available via the `ruvector/` submodule. See [Integration Map](docs/RUVECTOR-INTEGRATION.md) for detailed path references.
 
 | Crate | Submodule Path | Role in RVM |
@@ -856,6 +890,10 @@ The full [RuVector](https://github.com/ruvnet/RuVector) ecosystem is available v
 ---
 
 ## RVForge Integration
+
+<a href="docs/visual-walkthrough.md"><img src="docs/assets/visuals/header-rvf.svg" alt="The RVForge to RVM package execution contract." width="100%"></a>
+
+<a href="docs/visual-walkthrough.md#rvf"><img src="docs/assets/visuals/08-rvf.svg" alt="Verify, then execute. RVForge authors packages; RVM verifies, maps, places, and launches them." width="100%"></a>
 
 **One signed agent artifact, one identity, wherever it runs.**
 [RVForge](https://ruvnet.github.io/RuVector/rvforge/) (`@ruvector/rvforge`)

@@ -1,0 +1,433 @@
+{
+  "product": "RVM",
+  "tagline": "A runtime built around agents",
+  "icon": "cube",
+  "hero_lines": [
+    "A runtime built",
+    "around agents."
+  ],
+  "hero_footer": "ISOLATE / ADAPT / WITNESS",
+  "hero_description": "RVM: a runtime built around agents. A rotating four-dimensional wireframe, communication field and orange trajectory introduce capability-governed agent execution.",
+  "intro": "Follow an agent through RVM: from machine entry and coherence domains to capability checks, memory, verified RVF packages, governed context, and recovery.",
+  "quickstart": "../userguide/01-quickstart.md",
+  "cta": "[Build RVM](../userguide/01-quickstart.md) · [Explore the API and concepts](../userguide/) · [Read the design decisions](adr/) · [View releases](https://github.com/ruvnet/rvm/releases)",
+  "trailer": [
+    2,
+    3,
+    7,
+    9
+  ],
+  "chapters": [
+    {
+      "slug": "architecture",
+      "title": "An agent-native stack",
+      "subtitle": "A small core. Explicit boundaries. Optional extensions.",
+      "kind": "layers",
+      "footer": "RUST CORE · CAPABILITIES · WITNESSES",
+      "summary": "Machine entry, the core, coherence, adapters, and persistent state.",
+      "body": "RVM separates machine entry, its Rust `no_std` core, an optional coherence engine, execution adapters, and persistent state. Partitions are the units of isolation and scheduling. Capabilities carry authority; witnesses record privileged transitions. The coherence engine can be disabled without removing the core.",
+      "description": "An agent-native stack. Machine entry, the core, coherence, adapters, and persistent state.",
+      "sources": [
+        [
+          "Architecture",
+          "../userguide/03-architecture.md"
+        ],
+        [
+          "Crate map",
+          "../README.md#crate-structure"
+        ]
+      ],
+      "labels": [
+        "Persistent state",
+        "Execution adapters",
+        "Coherence engine",
+        "RVM core",
+        "Machine entry"
+      ],
+      "subs": [
+        "RVF / witness",
+        "WASM / service",
+        "optional",
+        "Rust / no_std",
+        "reset / traps"
+      ]
+    },
+    {
+      "slug": "boot",
+      "title": "Bring the kernel online",
+      "subtitle": "Initialize the foundations before handing off work.",
+      "kind": "boot",
+      "footer": "ORDERED INITIALIZATION · WITNESS GATING",
+      "summary": "The seven phases in the kernel initialization sequence.",
+      "body": "The ADR-137 boot sequence advances through reset, hardware detection, MMU setup, hypervisor mode, kernel object initialization, the first witness, and scheduler entry. Each completed phase records a witness before advancing. The diagram follows the current BootStage implementation and is an architectural walkthrough, not a captured boot session.",
+      "description": "Bring the kernel online. The seven phases in the kernel initialization sequence.",
+      "sources": [
+        [
+          "BootStage implementation",
+          "../crates/rvm-boot/src/sequence.rs"
+        ],
+        [
+          "Build and QEMU quick start",
+          "../userguide/01-quickstart.md"
+        ]
+      ]
+    },
+    {
+      "slug": "coherence",
+      "title": "Let the graph shape isolation",
+      "subtitle": "Communication and cut pressure inform placement.",
+      "kind": "coherence",
+      "footer": "OBSERVE → SCORE → SPLIT / MIGRATE → OBSERVE",
+      "summary": "Agent communication feeds the optional coherence control loop.",
+      "body": "Communication edges form a weighted graph. The optional coherence engine tracks locality and cut pressure, and supports partition restructuring through split, merge, and migration. Animated node clusters illustrate changing relationships; no latency or optimality guarantee is implied by the motion.",
+      "description": "Let the graph shape isolation. Agent communication feeds the optional coherence control loop.",
+      "sources": [
+        [
+          "Partitions and scheduling",
+          "../userguide/07-partitions-scheduling.md"
+        ],
+        [
+          "Coherence crate",
+          "../crates/rvm-coherence/"
+        ]
+      ]
+    },
+    {
+      "slug": "security",
+      "title": "Authority before mutation",
+      "subtitle": "Capability checks, proof verification, and a witness.",
+      "kind": "security",
+      "footer": "A REFUSED REQUEST DOES NOT MUTATE STATE",
+      "summary": "A request passes the security gate before its state transition.",
+      "body": "RVM checks capability authority and verifies the required proof before a permitted state transition. Its security path emits witness records for decisions, including refusals. Proof requirements vary by operation and tier; this diagram does not imply that every path uses a zero-knowledge proof.",
+      "description": "Authority before mutation. A request passes the security gate before its state transition.",
+      "sources": [
+        [
+          "Capabilities and proofs",
+          "../userguide/05-capabilities-proofs.md"
+        ],
+        [
+          "Security gate",
+          "../crates/rvm-security/"
+        ]
+      ]
+    },
+    {
+      "slug": "scheduling",
+      "title": "Schedule with two signals",
+      "subtitle": "Deadline urgency meets isolation pressure.",
+      "kind": "scheduler",
+      "footer": "DEADLINE URGENCY + CUT PRESSURE",
+      "summary": "The scheduler combines time urgency with graph-derived pressure.",
+      "body": "RVM scheduling uses deadline urgency and cut pressure. The first represents time-sensitive work; the second represents pressure from the coherence graph. This view explains the two inputs without prescribing weights. Animation speed is illustrative.",
+      "description": "Schedule with two signals. The scheduler combines time urgency with graph-derived pressure.",
+      "sources": [
+        [
+          "Scheduling model",
+          "../userguide/07-partitions-scheduling.md"
+        ],
+        [
+          "Scheduler crate",
+          "../crates/rvm-sched/"
+        ]
+      ]
+    },
+    {
+      "slug": "memory",
+      "title": "Keep state at the right tier",
+      "subtitle": "Hot, warm, dormant, and cold memory.",
+      "kind": "tiers",
+      "footer": "PLACEMENT · COMPRESSION · RECONSTRUCTION",
+      "summary": "Memory tiers, checkpoints, and witness-based reconstruction.",
+      "body": "Memory regions have ownership and a tier: Hot, Warm, Dormant, or Cold. Dormant state can combine a checkpoint with a compressed witness trail for reconstruction. Tier transitions and recovery depend on the configured runtime and storage path; the drawing is a conceptual lifecycle.",
+      "description": "Keep state at the right tier. Memory tiers, checkpoints, and witness-based reconstruction.",
+      "sources": [
+        [
+          "Memory model",
+          "../userguide/08-memory-model.md"
+        ],
+        [
+          "Reconstruction design",
+          "adr/ADR-136-memory-hierarchy-reconstruction.md"
+        ]
+      ]
+    },
+    {
+      "slug": "execution",
+      "title": "Choose an execution boundary",
+      "subtitle": "Hosted isolation and bare-metal targets are distinct.",
+      "kind": "sequence",
+      "footer": "ADAPTER CAPABILITIES DEFINE THE BOUNDARY",
+      "summary": "A verified workload uses the isolation its selected adapter supports.",
+      "body": "The hosted path uses `rvm-host` to select available OS isolation and launch supported workloads, including WASM. Bare-metal partitions use the kernel target and its hardware mechanisms. Hosted WASM or an OS sandbox must not be described as bare-metal partition isolation. Optional GPU access is separately feature- and capability-gated.",
+      "description": "Choose an execution boundary. A verified workload uses the isolation its selected adapter supports.",
+      "sources": [
+        [
+          "Host adapters",
+          "../crates/rvm-host/"
+        ],
+        [
+          "WASM agents",
+          "../userguide/09-wasm-agents.md"
+        ],
+        [
+          "GPU design",
+          "adr/ADR-144-gpu-compute-support.md"
+        ]
+      ],
+      "labels": [
+        "Workload",
+        "Adapter",
+        "Boundary"
+      ],
+      "subs": [
+        "Verified package",
+        "Host / kernel target",
+        "OS / WASM / hardware"
+      ],
+      "icons": [
+        "ship",
+        "route",
+        "shield"
+      ]
+    },
+    {
+      "slug": "rvf",
+      "title": "Verify, then execute",
+      "subtitle": "RVForge packages meet the RVM execution contract.",
+      "kind": "sequence",
+      "footer": "PACKAGE IDENTITY SURVIVES THE HANDOFF",
+      "summary": "RVForge authors packages; RVM verifies, maps, places, and launches them.",
+      "body": "RVForge authors and signs an RVF. `rvm-rvf` verifies its manifest and segments, maps capability requirements, and preserves package identity. `rvm-host` selects isolation and placement; `rvm-launch` manages the instance lifecycle. Inspect and verify do not execute the package. Unsupported capability requests are refused and witnessed.",
+      "description": "Verify, then execute. RVForge authors packages; RVM verifies, maps, places, and launches them.",
+      "sources": [
+        [
+          "Execution contract",
+          "adr/ADR-155-rvf-execution-contract.md"
+        ],
+        [
+          "Integration map",
+          "RVFORGE-INTEGRATION.md"
+        ]
+      ],
+      "labels": [
+        "RVForge",
+        "rvm-rvf",
+        "rvm-host",
+        "rvm-launch"
+      ],
+      "subs": [
+        "Author / sign RVF",
+        "Verify / map / witness",
+        "Isolate / place / spawn",
+        "Run / suspend / resume"
+      ],
+      "icons": [
+        "ship",
+        "scan",
+        "shield",
+        "terminal"
+      ]
+    },
+    {
+      "slug": "witness",
+      "title": "Reconstruct the evidence",
+      "subtitle": "Append-only records connect state transitions.",
+      "kind": "witness",
+      "footer": "HASH-CHAINED RECORDS · CHECKPOINT REPLAY",
+      "summary": "A witness chain connects privileged operations and recovery checkpoints.",
+      "body": "Witness records form an append-only, hash-chained audit trail. Checkpoint and replay mechanisms support recovery and forensic reconstruction of recorded transitions. The trace is illustrative: it contains no real workload, secrets, timestamps, or fabricated test results.",
+      "description": "Reconstruct the evidence. A witness chain connects privileged operations and recovery checkpoints.",
+      "sources": [
+        [
+          "Witness and audit",
+          "../userguide/06-witness-audit.md"
+        ],
+        [
+          "Memory reconstruction",
+          "../userguide/08-memory-model.md"
+        ]
+      ]
+    },
+    {
+      "slug": "context",
+      "title": "A name is not permission",
+      "subtitle": "Resolve governed ruv:// context only after authorization.",
+      "kind": "sequence",
+      "footer": "AUTHORIZE + WITNESS BEFORE RESOLVE / SEARCH",
+      "summary": "An out-of-band capability governs access to immutable context revisions.",
+      "body": "A `ruv://` URI is an inert name. Live capabilities arrive out of band; authorization and witnessing precede resolution or retrieval. RVF revisions are immutable, aliases update through compare-and-swap, and reads carry epoch receipts. Reading a skill does not execute it: execution requires a pinned URI and a separate permit.",
+      "description": "A name is not permission. An out-of-band capability governs access to immutable context revisions.",
+      "sources": [
+        [
+          "Governed context guide",
+          "../userguide/16-ruv-context.md"
+        ],
+        [
+          "Namespace contract",
+          "adr/ADR-157-ruv-context-namespace.md"
+        ],
+        [
+          "Hosted service",
+          "adr/ADR-158-ruv-context-hosted-service.md"
+        ]
+      ],
+      "labels": [
+        "ruv:// name",
+        "Capability",
+        "Scoped view"
+      ],
+      "subs": [
+        "Inert identifier",
+        "Authorize + witness",
+        "Revision + receipt"
+      ],
+      "icons": [
+        "code",
+        "shield",
+        "layers"
+      ]
+    },
+    {
+      "slug": "receipts",
+      "title": "Anchor external evidence",
+      "subtitle": "Verify a receipt before committing its anchor.",
+      "kind": "sequence",
+      "footer": "VERIFICATION → COMMITMENT → WITNESS CHAIN",
+      "summary": "External evaluation receipt commitments can enter the RVM witness chain.",
+      "body": "`rvm-anchor` verifies external evaluation receipts and anchors their commitments into the witness chain. An anchor preserves a verifiable relationship to supplied evidence; it does not independently prove that an external evaluator or its conclusion is correct.",
+      "description": "Anchor external evidence. External evaluation receipt commitments can enter the RVM witness chain.",
+      "sources": [
+        [
+          "Receipt anchoring",
+          "adr/ADR-156-external-receipt-anchoring.md"
+        ],
+        [
+          "Anchor crate",
+          "../crates/rvm-anchor/"
+        ]
+      ],
+      "labels": [
+        "Receipt",
+        "Verifier",
+        "Anchor"
+      ],
+      "subs": [
+        "External evaluation",
+        "Check signed evidence",
+        "Witness commitment"
+      ],
+      "icons": [
+        "witness",
+        "scan",
+        "layers"
+      ]
+    },
+    {
+      "slug": "quickstart",
+      "title": "Build your first RVM",
+      "subtitle": "Start with the workspace, then choose a target.",
+      "kind": "terminal",
+      "footer": "OPEN THE QUICK START FOR TARGET PREREQUISITES",
+      "summary": "Check and test the Rust workspace, then follow the platform build guide.",
+      "body": "Clone with submodules because RVM consumes RuVector components. Run the host workspace checks first. The quick-start guide lists the AArch64 toolchain, QEMU, and binary conversion tools needed for the bare-metal build and run steps.",
+      "description": "Build your first RVM. Check and test the Rust workspace, then follow the platform build guide.",
+      "sources": [
+        [
+          "Quick start",
+          "../userguide/01-quickstart.md"
+        ],
+        [
+          "User guide",
+          "../userguide/"
+        ],
+        [
+          "Releases",
+          "https://github.com/ruvnet/rvm/releases"
+        ]
+      ],
+      "lines": [
+        "$ cd rvm",
+        "$ cargo check",
+        "$ cargo test --workspace --lib",
+        "$ make build"
+      ],
+      "tag": "RUN IN YOUR TERMINAL",
+      "command": "git clone --recurse-submodules https://github.com/ruvnet/rvm.git\ncd rvm\ncargo check\ncargo test --workspace --lib"
+    }
+  ],
+  "headers": [
+    {
+      "slug": "why",
+      "icon": "graph",
+      "geometry": "hyperbolic",
+      "title": "Let the graph lead.",
+      "description": "RVM coherence domains: isolation follows communication and trust."
+    },
+    {
+      "slug": "architecture",
+      "icon": "layers",
+      "geometry": "hypercube",
+      "title": "Inside the agent runtime.",
+      "description": "RVM architecture, layers, kernel objects, and dependencies."
+    },
+    {
+      "slug": "build",
+      "icon": "terminal",
+      "geometry": "surface",
+      "title": "From source to first boot.",
+      "description": "Build, test, and run RVM using the platform quick start."
+    },
+    {
+      "slug": "context",
+      "icon": "shield",
+      "geometry": "sphere",
+      "title": "Context with authority.",
+      "description": "Capability-governed context, immutable revisions, and receipts."
+    },
+    {
+      "slug": "rvf",
+      "icon": "ship",
+      "geometry": "torus",
+      "title": "Package. Verify. Execute.",
+      "description": "The RVForge to RVM package execution contract."
+    },
+    {
+      "slug": "ecosystem",
+      "icon": "graph",
+      "geometry": "hyperbolic",
+      "title": "Part of a larger system.",
+      "description": "RVM, RuVector, RVF, and the agent infrastructure ecosystem."
+    }
+  ],
+  "features": [
+    {
+      "slug": "isolation",
+      "icon": "shield",
+      "title": "Isolate",
+      "subtitle": "Capability boundaries",
+      "description": "Capability-governed isolation."
+    },
+    {
+      "slug": "adapt",
+      "icon": "graph",
+      "title": "Adapt",
+      "subtitle": "Coherence-driven placement",
+      "description": "Graph-aware partition placement."
+    },
+    {
+      "slug": "remember",
+      "icon": "memory",
+      "title": "Reconstruct",
+      "subtitle": "Tiered state and checkpoints",
+      "description": "Tiered state and checkpoint reconstruction."
+    },
+    {
+      "slug": "witness",
+      "icon": "witness",
+      "title": "Witness",
+      "subtitle": "Hash-chained evidence",
+      "description": "Append-only evidence for privileged transitions."
+    }
+  ]
+}

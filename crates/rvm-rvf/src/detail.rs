@@ -1,5 +1,6 @@
 //! Typed reasons a verification check produced its outcome.
 
+use crate::stream::StreamError;
 use core::fmt;
 
 /// Why a check produced its outcome.
@@ -46,6 +47,39 @@ pub enum DetailCode {
     CapabilityUnsupported,
     /// A declared capability name is unknown to this RVM version.
     CapabilityUnknown,
+    /// The package declares a stream profile and arrived as a whole buffer
+    /// without policy permission: a downgrade, refused.
+    StreamProfileDowngrade,
+    /// The package declares a stream profile and policy permits buffered loading.
+    StreamProfilePermitted,
+    /// The package declares a stream profile and arrived as a verified stream.
+    StreamProfileSatisfied,
+    /// The host requires a pinned identity and none was supplied.
+    IdentityNotPinned,
+    /// A stream descriptor passed every ADR-353 invariant.
+    StreamDescriptorAccepted,
+    /// Every chunk of a stream segment matched its signed commitment.
+    StreamSegmentAccepted,
+    /// A stream completed.
+    StreamCompleted,
+    /// A streamed module passed incremental validation under policy.
+    StreamModuleValidated,
+    /// A streamed module failed incremental validation or policy.
+    StreamModuleRejected,
+    /// A stream descriptor or frame was refused, for this reason.
+    StreamRefused(StreamError),
+}
+
+impl DetailCode {
+    /// The numeric stream error code carried by [`Self::StreamRefused`];
+    /// zero for every other detail.
+    #[must_use]
+    pub const fn stream_error_code(&self) -> u16 {
+        match self {
+            Self::StreamRefused(e) => e.code(),
+            _ => 0,
+        }
+    }
 }
 
 impl fmt::Display for DetailCode {
@@ -70,6 +104,20 @@ impl fmt::Display for DetailCode {
             Self::CapabilitiesMapped => "declared capability classes mapped into rvm-cap",
             Self::CapabilityUnsupported => "declared capability class is unrepresentable",
             Self::CapabilityUnknown => "declared capability class name is unknown",
+            Self::StreamProfileDowngrade => {
+                "stream-profiled package offered to the buffered loader without permission"
+            }
+            Self::StreamProfilePermitted => {
+                "buffered loading of a stream-profiled package permitted"
+            }
+            Self::StreamProfileSatisfied => "stream-profiled package arrived as a verified stream",
+            Self::IdentityNotPinned => "policy requires a pinned identity and none was supplied",
+            Self::StreamDescriptorAccepted => "stream descriptor passed every invariant",
+            Self::StreamSegmentAccepted => "every chunk of the segment matched its commitment",
+            Self::StreamCompleted => "stream completed",
+            Self::StreamModuleValidated => "streamed module validated under policy",
+            Self::StreamModuleRejected => "streamed module failed validation or policy",
+            Self::StreamRefused(_) => "stream descriptor or frame refused",
         };
         f.write_str(s)
     }

@@ -267,8 +267,7 @@ impl CapabilityMapping {
     /// # Errors
     ///
     /// [`RvfError::CapabilityTableFull`] when the table runs out of slots.
-    /// Slots already inserted are left in place: the caller holds the table
-    /// and is the only party that can decide whether to unwind it.
+    /// Slots already inserted are removed again (see [`Self::install_tracked`]).
     pub fn install<const N: usize>(
         &self,
         table: &mut CapabilityTable<N>,
@@ -276,17 +275,44 @@ impl CapabilityMapping {
         epoch: u32,
         first_cap_id: u64,
     ) -> RvfResult<usize> {
+        self.install_tracked(table, owner, epoch, first_cap_id)
+            .map(|handles| handles.len())
+    }
+
+    /// [`Self::install`], returning the `(index, generation)` handle of every
+    /// capability inserted, so the installer (and only the installer) can later
+    /// revoke exactly these: a stream session that installs a package's
+    /// capabilities revokes them, and nothing else, if the stream is poisoned.
+    ///
+    /// # Errors
+    ///
+    /// [`RvfError::CapabilityTableFull`] when the table runs out of slots. The
+    /// slots already inserted are removed again before the error is returned,
+    /// so a failed install leaves the table as it found it.
+    pub fn install_tracked<const N: usize>(
+        &self,
+        table: &mut CapabilityTable<N>,
+        owner: PartitionId,
+        epoch: u32,
+        first_cap_id: u64,
+    ) -> RvfResult<Vec<(u32, u32)>> {
+        let mut handles = Vec::with_capacity(self.granted.len());
         for (i, binding) in self.granted.iter().enumerate() {
             let id = first_cap_id.wrapping_add(i as u64);
             let token = CapToken::new(id, binding.cap_type, binding.rights, epoch);
             let badge = binding.class as u64;
             // `insert_root` can only fail by running out of slots; every
             // other CapError variant belongs to lookup and derivation.
-            if table.insert_root(token, owner, badge).is_err() {
+            if let Ok(handle) = table.insert_root(token, owner, badge) {
+                handles.push(handle);
+            } else {
+                for (index, generation) in handles {
+                    let _ = table.remove(index, generation);
+                }
                 return Err(RvfError::CapabilityTableFull);
             }
         }
-        Ok(self.granted.len())
+        Ok(handles)
     }
 }
 
@@ -322,13 +348,31 @@ pub fn map_declared(declared: &[CapabilityClass]) -> RvfResult<CapabilityMapping
 /// can only narrow the granted set.
 #[must_use]
 pub fn declared_classes(data: &[u8], segments: &[ParsedSegment]) -> Vec<CapabilityClass> {
+    declared_classes_in(plaintext_meta(data, segments))
+}
+
+/// The plaintext `META` payloads of a walked container.
+fn plaintext_meta<'a>(
+    data: &'a [u8],
+    segments: &'a [ParsedSegment],
+) -> impl Iterator<Item = &'a [u8]> + Clone {
+    segments
+        .iter()
+        .filter(|s| s.header.seg_type == SEG_TYPE_META && !s.header.is_encrypted())
+        .map(move |s| s.payload(data))
+}
+
+/// [`declared_classes`] over already-selected plaintext `META` payloads, so a
+/// streaming consumer that never holds the whole container reads the same
+/// declaration the buffered path does.
+#[must_use]
+pub(crate) fn declared_classes_in<'a>(
+    payloads: impl Iterator<Item = &'a [u8]>,
+) -> Vec<CapabilityClass> {
     let mut found: Vec<CapabilityClass> = Vec::new();
 
-    for seg in segments {
-        if seg.header.seg_type != SEG_TYPE_META || seg.header.is_encrypted() {
-            continue;
-        }
-        let Ok(text) = core::str::from_utf8(seg.payload(data)) else {
+    for payload in payloads {
+        let Ok(text) = core::str::from_utf8(payload) else {
             continue;
         };
         for line in text.lines() {
@@ -354,12 +398,9 @@ pub fn declared_classes(data: &[u8], segments: &[ParsedSegment]) -> Vec<Capabili
 
 /// Whether a plaintext capability declaration contains a non-empty name that
 /// this RVM version does not understand.
-pub(crate) fn has_unknown_class_name(data: &[u8], segments: &[ParsedSegment]) -> bool {
-    segments.iter().any(|seg| {
-        if seg.header.seg_type != SEG_TYPE_META || seg.header.is_encrypted() {
-            return false;
-        }
-        let Ok(text) = core::str::from_utf8(seg.payload(data)) else {
+pub(crate) fn has_unknown_class_name_in<'a>(mut payloads: impl Iterator<Item = &'a [u8]>) -> bool {
+    payloads.any(|payload| {
+        let Ok(text) = core::str::from_utf8(payload) else {
             return false;
         };
         text.lines().any(|line| {
@@ -373,6 +414,12 @@ pub(crate) fn has_unknown_class_name(data: &[u8], segments: &[ParsedSegment]) ->
                 })
         })
     })
+}
+
+/// [`has_unknown_class_name_in`] for a walked container.
+#[cfg(test)]
+pub(crate) fn has_unknown_class_name(data: &[u8], segments: &[ParsedSegment]) -> bool {
+    has_unknown_class_name_in(plaintext_meta(data, segments))
 }
 
 #[cfg(test)]

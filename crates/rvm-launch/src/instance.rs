@@ -26,8 +26,8 @@ use rvm_witness::WitnessLog;
 use crate::checkpoint::Checkpoint;
 use crate::context::ContextLaunchAuthorization;
 use crate::error::{LaunchError, LaunchResult};
-use crate::state::{is_legal, InstanceId, InstanceState, LifecycleOp};
-use crate::witness::{emit, emit_illegal, LaunchEvent, LaunchWitnessContext};
+use crate::state::{InstanceId, InstanceState, LifecycleOp};
+use crate::witness::{emit, LaunchEvent, LaunchWitnessContext};
 
 /// A half-open span of witness sequence numbers.
 type SeqRange = (u64, u64);
@@ -36,14 +36,19 @@ type SeqRange = (u64, u64);
 #[derive(Debug)]
 pub struct Instance<A: HostAdapter> {
     id: InstanceId,
-    adapter: A,
-    package: VerifiedPackage,
-    isolation: IsolationContext,
-    state: InstanceState,
-    agent: Option<AgentId>,
+    pub(crate) adapter: A,
+    pub(crate) package: VerifiedPackage,
+    pub(crate) isolation: IsolationContext,
+    pub(crate) state: InstanceState,
+    pub(crate) agent: Option<AgentId>,
     checkpoints: u32,
-    ranges: Vec<SeqRange>,
+    pub(crate) ranges: Vec<SeqRange>,
     context_authorization: Option<ContextLaunchAuthorization>,
+    /// The module bytes this instance was started with through
+    /// [`Self::start_verified`], held in the instance's own storage.
+    pub(crate) module: Option<Vec<u8>>,
+    /// The stream session (and descriptor) this instance was started from.
+    pub(crate) stream_origin: Option<crate::stream_module::StreamOrigin>,
 }
 
 impl<A: HostAdapter> Instance<A> {
@@ -94,6 +99,8 @@ impl<A: HostAdapter> Instance<A> {
             checkpoints: 0,
             ranges: alloc::vec![(start, log.total_emitted())],
             context_authorization: None,
+            module: None,
+            stream_origin: None,
         })
     }
 
@@ -422,62 +429,6 @@ impl<A: HostAdapter> Instance<A> {
     #[must_use]
     pub fn binds_to_package(&self, record: &WitnessRecord) -> bool {
         record.capability_hash == fnv1a_32(self.package.identity())
-    }
-
-    fn witness_context(&self, timestamp_ns: u64) -> LaunchWitnessContext {
-        LaunchWitnessContext {
-            instance: self.id,
-            rvf_identity: *self.package.identity(),
-            partition: self.isolation.placement.partition,
-            timestamp_ns,
-        }
-    }
-
-    /// Refuse an operation the state machine does not allow, witnessing the
-    /// refusal first.
-    fn guard<const N: usize>(
-        &mut self,
-        op: LifecycleOp,
-        log: &WitnessLog<N>,
-        timestamp_ns: u64,
-    ) -> LaunchResult<()> {
-        if is_legal(self.state, op) {
-            return Ok(());
-        }
-        let start = log.total_emitted();
-        emit_illegal(log, &self.witness_context(timestamp_ns), self.state, op);
-        self.record_range(start, log.total_emitted());
-        Err(LaunchError::IllegalTransition {
-            from: self.state,
-            op,
-        })
-    }
-
-    fn record_range(&mut self, start: u64, end: u64) {
-        if end > start {
-            self.ranges.push((start, end));
-        }
-    }
-
-    fn guard_executable<const N: usize>(
-        &mut self,
-        module: &[u8],
-        log: &WitnessLog<N>,
-        timestamp_ns: u64,
-        start: u64,
-    ) -> LaunchResult<()> {
-        if self.package.accepts_wasm(module) {
-            return Ok(());
-        }
-        emit(
-            log,
-            LaunchEvent::ExecutableRejected,
-            &self.witness_context(timestamp_ns),
-            self.state,
-            fnv1a_32(module),
-        );
-        self.record_range(start, log.total_emitted());
-        Err(LaunchError::ExecutableMismatch)
     }
 }
 

@@ -128,3 +128,23 @@ fn file_order_confirms_the_identity_while_streaming() {
     assert!(report.identity_confirmed && report.admissible());
     assert!(s.session.package().is_some());
 }
+
+#[test]
+fn the_witnessed_confirmation_path_also_unlocks_the_package() {
+    let (mut s, body, _) = stage_ordered(None);
+    assert!(s.session.package().is_none());
+    let log = WitnessLog::<512>::new();
+    s.session
+        .finish_identity_witnessed(
+            |off, buf| {
+                buf.copy_from_slice(&body[off as usize..off as usize + buf.len()]);
+                true
+            },
+            &log,
+            rvm_rvf::WitnessContext::new(1, 1),
+        )
+        .unwrap();
+    assert!(s.session.report().unwrap().admissible());
+    assert!(s.session.package().is_some());
+    assert!(s.session.take_module(2).is_ok());
+}

@@ -12,9 +12,10 @@ use crate::error::RvfError;
 use crate::format::{
     align_up, build_signed_message_from_hash, compute_footer_length, decode_signature_footer,
     is_executable, SegmentHeader, MAX_SEGMENT_PAYLOAD, MAX_SIGNATURE_LENGTH, SEGMENT_ALIGNMENT,
-    SEGMENT_HEADER_SIZE,
+    SEGMENT_HEADER_SIZE, SEG_TYPE_WASM,
 };
 use crate::report::{SegmentFacts, SigFacts};
+use crate::wasm_payload::WasmPayloadScanner;
 use alloc::vec::Vec;
 use sha2::Sha256;
 use sha3::digest::{ExtendableOutput, Update, XofReader};
@@ -71,6 +72,8 @@ pub(crate) struct SegmentChecker {
     xxh: Option<Xxh3>,
     shake: Option<Shake256>,
     sha: Option<Sha256>,
+    /// For a `WASM` segment: splits the payload into `WasmHeader` and module.
+    wasm: Option<WasmPayloadScanner>,
     tail: Vec<u8>,
     /// The last (up to) 63 bytes seen, to judge a zero tail after the last
     /// segment the way the buffered walk does.
@@ -97,6 +100,7 @@ impl SegmentChecker {
             xxh: None,
             shake: None,
             sha: None,
+            wasm: None,
             tail: Vec::new(),
             last: Vec::new(),
         }
@@ -152,6 +156,11 @@ impl SegmentChecker {
                 if let Some(s) = &mut self.sha {
                     sha2::Digest::update(s, part);
                 }
+                if let Some(w) = &mut self.wasm {
+                    // A refused header is remembered by the scanner and shows
+                    // up in the segment's facts; it is not a malformed segment.
+                    let _ = w.push(part, |_| {});
+                }
                 span = PayloadSpan {
                     start: consumed,
                     end: consumed + take,
@@ -200,6 +209,9 @@ impl SegmentChecker {
         }
         if is_executable(h.seg_type) {
             self.sha = Some(<Sha256 as sha2::Digest>::new());
+        }
+        if h.seg_type == SEG_TYPE_WASM && !h.is_encrypted() {
+            self.wasm = Some(WasmPayloadScanner::new());
         }
         self.header = Some(h);
         Ok(())
@@ -286,6 +298,7 @@ impl SegmentChecker {
             content_hash_ok,
             sig,
             payload_sha256: self.sha.map(|s| sha2::Digest::finalize(s).into()),
+            wasm: self.wasm.map(|w| w.finish(|_| {})),
         };
         Ok((parsed, facts))
     }

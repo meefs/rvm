@@ -4,9 +4,9 @@
 //! path that mints a `VerifiedPackage`, hands out a module, installs
 //! capabilities or starts an instance is behind it.
 
+mod stream_common;
 #[path = "../../rvm-wasm/tests/common/mod.rs"]
 mod wasm_common;
-mod stream_common;
 
 use rvm_cap::CapabilityTable;
 use rvm_host::{HostError, VerifiedPackage, WasmAdapter};
@@ -71,7 +71,11 @@ fn nothing_activates_before_the_identity_is_confirmed_and_everything_does_after(
     let report = s.session.report().unwrap();
     assert!(report.identity_confirmed && report.admissible());
     assert_eq!(s.session.stream_state(), StreamState::Complete);
-    let package = s.session.package().expect("package after confirmation").clone();
+    let package = s
+        .session
+        .package()
+        .expect("package after confirmation")
+        .clone();
     assert_eq!(package.identity(), &rvm_rvf::sha256(&body));
     assert_eq!(package, VerifiedPackage::from_report(report).unwrap());
 

@@ -59,6 +59,9 @@ pub enum CheckKind {
     StreamModule = 12,
     /// A stream frame was refused and counted against the fault budget.
     StreamFault = 13,
+    /// A `WASM` segment payload carries an `rvf-runtime` `WasmHeader`: it was
+    /// validated and stripped, or refused (rvm#84 item 2).
+    WasmHeader = 14,
 }
 
 /// The result of one check.
@@ -99,17 +102,36 @@ pub struct VerifiedExecutable {
     pub segment_id: u64,
     /// RVF segment type discriminator.
     pub segment_type: u8,
-    /// Exact executable payload length.
+    /// Exact executable payload length (the whole segment payload, including
+    /// any `WasmHeader`).
     pub byte_length: u64,
     /// SHA-256 of the executable payload bytes.
     pub sha256: [u8; 32],
+    /// Offset of the code within the payload: 64 when an `rvf-runtime`
+    /// `WasmHeader` precedes the module (validated, and not part of the code),
+    /// otherwise 0.
+    pub module_offset: u64,
+    /// Length of the code that will run: the module without its header.
+    pub module_length: u64,
+    /// SHA-256 of the code that will run. Equal to [`Self::sha256`] when there
+    /// is no header.
+    pub module_sha256: [u8; 32],
 }
 
 impl VerifiedExecutable {
-    /// Whether `module` is exactly the payload represented by this identity.
+    /// Whether `module` is exactly the code this identity represents: the
+    /// module bytes of the segment, without any `WasmHeader`. This is the check
+    /// every start performs on the bytes it is about to admit.
     #[must_use]
     pub fn matches(&self, module: &[u8]) -> bool {
-        self.byte_length == module.len() as u64 && self.sha256 == sha256(module)
+        self.module_length == module.len() as u64 && self.module_sha256 == sha256(module)
+    }
+
+    /// Whether `payload` is exactly the whole segment payload (header
+    /// included) that was verified.
+    #[must_use]
+    pub fn matches_payload(&self, payload: &[u8]) -> bool {
+        self.byte_length == payload.len() as u64 && self.sha256 == sha256(payload)
     }
 }
 

@@ -73,9 +73,10 @@ impl From<RvfError> for HostError {
 impl From<HostError> for RvmError {
     fn from(e: HostError) -> Self {
         match e {
-            HostError::Unverified | HostError::IdentityUnconfirmed | HostError::Rvf(_) | HostError::ModuleRejected(_) => {
-                RvmError::ProofInvalid
-            }
+            HostError::Unverified
+            | HostError::IdentityUnconfirmed
+            | HostError::Rvf(_)
+            | HostError::ModuleRejected(_) => RvmError::ProofInvalid,
             HostError::CapabilityUnenforceable(_) | HostError::MechanismUnavailable(_) => {
                 RvmError::Unsupported
             }

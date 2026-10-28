@@ -98,6 +98,7 @@ pub mod policy;
 mod report;
 pub mod stream;
 pub mod verify;
+pub mod wasm_payload;
 pub mod witness;
 
 #[cfg(test)]
@@ -126,6 +127,10 @@ pub use report::STREAM_PROFILE_DECLARATION_KEY;
 pub use verify::{
     verify, CheckKind, Outcome, VerificationRecord, VerificationReport, VerifiedExecutable,
     VerifyOptions,
+};
+pub use wasm_payload::{
+    split_wasm_payload, ModuleSpan, WasmPayloadError, WasmPayloadFacts, WasmPayloadScanner,
+    WASM_HEADER_LEN, WASM_HEADER_MAGIC,
 };
 pub use witness::{
     action_kind_for, build_record, build_record_with_payload, emit_record, emit_report,

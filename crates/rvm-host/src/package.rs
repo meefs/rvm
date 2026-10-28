@@ -153,6 +153,23 @@ mod tests {
     }
 
     #[test]
+    fn a_report_with_an_unconfirmed_identity_yields_no_package_even_when_ok() {
+        // rvm#84 item 1: a stage-ordered stream's report is `ok` (every check
+        // passed) while its identity is still only the signer's claim.
+        let data = testkit::container_declaring("memory");
+        let mut report = verify(&data, &testkit::lenient_options()).unwrap();
+        assert!(report.ok && report.identity_confirmed && report.admissible());
+        report.identity_confirmed = false;
+        assert!(report.ok);
+        assert!(!report.admissible());
+        assert_eq!(
+            VerifiedPackage::from_report(&report),
+            Err(HostError::IdentityUnconfirmed)
+        );
+        assert!(report.into_result().is_err());
+    }
+
+    #[test]
     fn a_tampered_container_yields_no_package() {
         let mut data = testkit::container_with_wasm("memory");
         // Flip a byte inside the WASM payload; the content hash stops matching.

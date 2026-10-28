@@ -50,6 +50,16 @@ fn assert_same(name: &str, body: &[u8], opts: &VerifyOptions, chunk_log2: u8, or
         }
     }
     buffered.ok = !buffered.records.iter().any(|r| r.outcome == Outcome::Fail);
+    // The other intended difference (rvm#84 item 1): a stage-ordered stream
+    // ends CompleteUnverified and its report says so (`identity_confirmed`
+    // false, so not admissible); the buffered report hashed the bytes itself.
+    assert_eq!(
+        streamed.identity_confirmed,
+        run.state == StreamState::Complete,
+        "{ctx}"
+    );
+    assert!(buffered.identity_confirmed, "{ctx}");
+    buffered.identity_confirmed = streamed.identity_confirmed;
     assert_eq!(streamed, buffered, "{ctx}");
 }
 

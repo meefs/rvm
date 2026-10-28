@@ -405,11 +405,11 @@ impl<'p> StreamSession<'p> {
     }
 
     fn on_complete(&mut self, witness: Emit<'_>) -> Result<SessionEvent, SessionError> {
-        let package = self
-            .admission
-            .report()
-            .and_then(|r| VerifiedPackage::from_report(r).ok());
-        let Some(p) = package else {
+        // A failed check refuses now. A stage-ordered stream whose checks pass
+        // but whose identity is still only the signer's claim completes with no
+        // package: `from_report` refuses until `finish_identity` confirms it,
+        // and `promote` builds the package then (ADR-160 item 8).
+        let Some(report) = self.admission.report().filter(|r| r.ok) else {
             // The failing checks were written by the witnessed push; the
             // refusal itself is the session's failure.
             self.fail(SessionError::PackageRefused);
@@ -418,7 +418,7 @@ impl<'p> StreamSession<'p> {
         if let (Some(w), Some(b)) = (witness, binding_of(&self.admission)) {
             w(&StreamEvent::StreamComplete, &b);
         }
-        self.pending_package = Some(p);
+        self.pending_package = VerifiedPackage::from_report(report).ok();
         self.state = SessionState::Complete;
         self.promote(witness)?;
         Ok(SessionEvent::Complete)

@@ -132,6 +132,9 @@ pub(crate) struct ReportInput<'a> {
     pub meta: Declarations<'a>,
     /// Delivery path.
     pub delivery: Delivery,
+    /// Whether `identity` was computed from, or verified against, the bytes
+    /// themselves (not merely claimed by a signer).
+    pub identity_confirmed: bool,
 }
 
 const fn outcome(passed: bool) -> Outcome {
@@ -260,6 +263,7 @@ pub(crate) fn build_report(input: &ReportInput<'_>, opts: &VerifyOptions) -> Ver
         rvf_identity: input.identity,
         byte_length: input.container_bytes,
         ok,
+        identity_confirmed: input.identity_confirmed,
         segment_count: segments.len(),
         executables,
         records,

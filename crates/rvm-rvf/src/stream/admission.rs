@@ -273,7 +273,11 @@ impl<'p> StreamAdmission<'p> {
         &mut self,
         read_at: impl FnMut(u64, &mut [u8]) -> bool,
     ) -> Result<(), StreamError> {
-        self.verifier.finish_identity(read_at)
+        self.verifier.finish_identity(read_at)?;
+        if let Some(r) = self.report.as_mut() {
+            r.identity_confirmed = true;
+        }
+        Ok(())
     }
 
     /// Drop everything derived from released bytes: open segment checkers,
@@ -448,6 +452,7 @@ impl<'p> StreamAdmission<'p> {
                 facts: &facts,
                 meta: Declarations { meta_payloads },
                 delivery: Delivery::Streamed,
+                identity_confirmed: complete == Some(IdentityStatus::Verified),
             },
             &self.opts,
         );

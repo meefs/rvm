@@ -17,6 +17,9 @@ pub enum HostError {
     /// A [`crate::VerifiedPackage`] was asked for from a report that failed
     /// verification. Nothing executes on the strength of a failed report.
     Unverified,
+    /// The report's checks passed but its identity is only the signer's claim
+    /// (a stage-ordered stream that has not been confirmed). ADR-160 item 8.
+    IdentityUnconfirmed,
     /// The adapter cannot enforce a capability class the package declared.
     ///
     /// Carries the first such class. The refusal is witnessed and no grant is
@@ -40,6 +43,7 @@ impl fmt::Display for HostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unverified => f.write_str("package did not pass verification"),
+            Self::IdentityUnconfirmed => f.write_str("package identity is not confirmed"),
             Self::CapabilityUnenforceable(c) => {
                 write!(f, "adapter cannot enforce capability class {c}")
             }
@@ -69,7 +73,7 @@ impl From<RvfError> for HostError {
 impl From<HostError> for RvmError {
     fn from(e: HostError) -> Self {
         match e {
-            HostError::Unverified | HostError::Rvf(_) | HostError::ModuleRejected(_) => {
+            HostError::Unverified | HostError::IdentityUnconfirmed | HostError::Rvf(_) | HostError::ModuleRejected(_) => {
                 RvmError::ProofInvalid
             }
             HostError::CapabilityUnenforceable(_) | HostError::MechanismUnavailable(_) => {
@@ -96,6 +100,7 @@ mod tests {
     fn every_error_renders_without_panicking() {
         let all = [
             HostError::Unverified,
+            HostError::IdentityUnconfirmed,
             HostError::CapabilityUnenforceable(CapabilityClass::Network),
             HostError::MechanismUnavailable(IsolationMechanism::LinuxSeccomp),
             HostError::MechanismNotInStack(IsolationMechanism::MacosNotarization),

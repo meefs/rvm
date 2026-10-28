@@ -125,7 +125,18 @@ pub struct VerificationReport {
     /// Container size in bytes.
     pub byte_length: u64,
     /// True when no record failed.
+    ///
+    /// **`ok` is not an admission decision.** It says every check that ran
+    /// passed; on a stage-ordered stream that has not yet confirmed its
+    /// identity it can be true while [`Self::identity_confirmed`] is false.
+    /// Wherever authority is granted (a package, a capability, a start) the
+    /// gate is [`Self::admissible`], never `ok` alone.
     pub ok: bool,
+    /// True when [`Self::rvf_identity`] was computed from, or verified against,
+    /// the container bytes. False when it is only the signer's claim (a
+    /// stage-ordered stream ends `CompleteUnverified` until
+    /// `finish_identity` re-reads the body). ADR-160 item 8.
+    pub identity_confirmed: bool,
     /// How many segments were examined.
     pub segment_count: usize,
     /// Executable payload identities retained for verify-before-load binding.
@@ -143,6 +154,13 @@ pub struct VerificationReport {
 }
 
 impl VerificationReport {
+    /// Whether this report may be acted on: every check passed **and** the
+    /// identity is confirmed. This is the only gate that grants authority.
+    #[must_use]
+    pub const fn admissible(&self) -> bool {
+        self.ok && self.identity_confirmed
+    }
+
     /// The failing records.
     #[must_use]
     pub fn failures(&self) -> Vec<&VerificationRecord> {
@@ -170,7 +188,7 @@ impl VerificationReport {
     /// individual failures read [`VerificationReport::failures`] instead;
     /// this is the shorthand for "refuse and say roughly why".
     pub fn into_result(self) -> RvfResult<Self> {
-        if self.ok {
+        if self.admissible() {
             return Ok(self);
         }
         if self.first_failure(CheckKind::CapabilityMapping).is_some() {
@@ -283,6 +301,7 @@ pub fn verify(data: &[u8], opts: &VerifyOptions) -> RvfResult<VerificationReport
             facts: &facts,
             meta: Declarations { meta_payloads },
             delivery: Delivery::Buffered,
+            identity_confirmed: true,
         },
         opts,
     ))

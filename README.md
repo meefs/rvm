@@ -923,7 +923,7 @@ agent.rvf ──[RVForge: author · sign · publish]──→ registry + bundles
 |-----------|-----|
 | Identity preserved | `rvfIdentity` (SHA-256 of the canonical RVF) read and carried, never re-minted |
 | Verify before load | Root manifest verified before executable memory is allocated; every segment verified before it loads |
-| Nothing runs unverified | `Instance::create` takes a `VerifiedPackage` whose only constructor rejects a failed report — there is no path from a failed verify to a running instance |
+| Nothing runs unverified | `Instance::create` takes a `VerifiedPackage` whose only constructor rejects a failed report **and** a report whose identity is only a signer's claim (`identity_confirmed`) — there is no path from a failed or unconfirmed verify to a running instance. `report.ok` alone grants nothing; the gate is `report.admissible()` |
 | Inspection ≠ execution | `inspect` and `verify` read headers, hash payloads and check signatures without mapping a segment or resolving an entry point — safe to point at hostile artifacts |
 | Nothing undeclared | 15 capability classes, default-deny, mapped total into `rvm-cap` |
 | Refusal, not degradation | An unsupported capability class is a witnessed refusal, never a silent partial start |
@@ -986,7 +986,20 @@ What it does **not** do:
   start is designed but not built).
 - Stage-ordered delivery completes as `CompleteUnverified` until
   `finish_identity` re-verifies the persisted body; `take_module`,
-  `package()` and capability installation refuse until it succeeds.
+  `package()`, capability installation and `VerifiedPackage::from_report`
+  (the report says `identity_confirmed == false`) refuse until it succeeds.
+- **WASM from `rvf-runtime`.** Packages written by `RvfStore::embed_wasm` carry a
+  64-byte `WasmHeader` before the bytecode. `rvm-rvf` validates and strips it
+  (a lying or truncated header is refused), and this is tested against a file
+  written by a real `embed_wasm` call (rvf-runtime 0.4.0), buffered and
+  streamed. Limits of that claim: `embed_wasm` writes the segment *unsigned*
+  with the default checksum, so the buffered loader admits it only in a
+  development posture (`allow_unsigned_executable`) and the stream path refuses
+  the file as written (weak checksum); stream it after repackaging with a
+  SHAKE-256 checksum. Plain data stores from `rvf-cli`/`rvf-runtime` are covered
+  by the P0 compatibility fixtures; interop for executables is only claimed for
+  the case above, with the bytes of the fixture, not for every runtime-written
+  package.
 - A package that declares `rvm.stream_profile=required` is refused by the
   buffered loader unless `permit_buffered_stream_profile` is set, which itself
   requires a pinned identity. Replay protection is **opt-in by construction**:

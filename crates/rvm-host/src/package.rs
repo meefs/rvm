@@ -5,8 +5,9 @@
 //! keep that true under later refactoring is to make it a type. Every entry
 //! point in `rvm-host` and `rvm-launch` that can lead to execution takes a
 //! [`VerifiedPackage`], and the only way to obtain one is
-//! [`VerifiedPackage::from_report`], which refuses a report whose `ok` is
-//! false. A caller cannot start an unverified artifact by forgetting a check,
+//! [`VerifiedPackage::from_report`], which refuses a report that is not
+//! [`admissible`](rvm_rvf::VerificationReport::admissible) (a failed check, or an
+//! identity that is only a signer's claim). A caller cannot start an unverified artifact by forgetting a check,
 //! because there is no unverified value to pass.
 
 use alloc::vec::Vec;
@@ -39,9 +40,15 @@ impl VerifiedPackage {
     /// [`HostError::Unverified`] when any check in the report failed. The
     /// caller has already witnessed those failures through
     /// [`rvm_rvf::emit_report`]; this is the refusal to act on them.
+    ///
+    /// [`HostError::IdentityUnconfirmed`] when the checks passed but the
+    /// identity is unconfirmed (stage-ordered stream before `finish_identity`).
     pub fn from_report(report: &VerificationReport) -> HostResult<Self> {
         if !report.ok {
             return Err(HostError::Unverified);
+        }
+        if !report.identity_confirmed {
+            return Err(HostError::IdentityUnconfirmed);
         }
         Ok(Self {
             identity: report.rvf_identity,
@@ -143,6 +150,23 @@ mod tests {
             VerifiedPackage::from_report(&report),
             Err(HostError::Unverified)
         );
+    }
+
+    #[test]
+    fn a_report_with_an_unconfirmed_identity_yields_no_package_even_when_ok() {
+        // rvm#84 item 1: a stage-ordered stream's report is `ok` (every check
+        // passed) while its identity is still only the signer's claim.
+        let data = testkit::container_declaring("memory");
+        let mut report = verify(&data, &testkit::lenient_options()).unwrap();
+        assert!(report.ok && report.identity_confirmed && report.admissible());
+        report.identity_confirmed = false;
+        assert!(report.ok);
+        assert!(!report.admissible());
+        assert_eq!(
+            VerifiedPackage::from_report(&report),
+            Err(HostError::IdentityUnconfirmed)
+        );
+        assert!(report.into_result().is_err());
     }
 
     #[test]

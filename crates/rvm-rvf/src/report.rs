@@ -11,14 +11,15 @@ use crate::capability::{CapabilityClass, CapabilityMapping};
 use crate::container::{root_manifest, ParsedSegment};
 use crate::detail::DetailCode;
 use crate::format::{
-    build_signed_message, decode_signature_footer, ED25519_SIGNATURE_LENGTH, SIGNED_MESSAGE_LEN,
-    SIG_ALGO_ED25519,
+    build_signed_message, decode_signature_footer, ED25519_SIGNATURE_LENGTH, SEG_TYPE_WASM,
+    SIGNED_MESSAGE_LEN, SIG_ALGO_ED25519,
 };
 use crate::hash::{sha256, verify_content_hash};
 use crate::policy::check as check_sizes;
 use crate::verify::{
     CheckKind, Outcome, VerificationRecord, VerificationReport, VerifiedExecutable, VerifyOptions,
 };
+use crate::wasm_payload::{scan_payload, WasmPayloadFacts};
 use alloc::vec::Vec;
 use ed25519_dalek::{Signature, VerifyingKey};
 
@@ -52,6 +53,9 @@ pub(crate) struct SegmentFacts {
     pub sig: SigFacts,
     /// SHA-256 of the payload, kept for executables only.
     pub payload_sha256: Option<[u8; 32]>,
+    /// For a `WASM` segment: whether the payload is a bare module or carries
+    /// an `rvf-runtime` `WasmHeader`, and the module's span and identity.
+    pub wasm: Option<WasmPayloadFacts>,
 }
 
 /// Facts for a segment of a container held whole in `data`.
@@ -78,6 +82,8 @@ pub(crate) fn facts_from_buffer(data: &[u8], seg: &ParsedSegment) -> SegmentFact
         content_hash_ok: verify_content_hash(&seg.header, payload),
         sig,
         payload_sha256: seg.is_executable().then(|| sha256(payload)),
+        wasm: (seg.header.seg_type == SEG_TYPE_WASM && !seg.header.is_encrypted())
+            .then(|| scan_payload(payload)),
     }
 }
 
@@ -132,6 +138,9 @@ pub(crate) struct ReportInput<'a> {
     pub meta: Declarations<'a>,
     /// Delivery path.
     pub delivery: Delivery,
+    /// Whether `identity` was computed from, or verified against, the bytes
+    /// themselves (not merely claimed by a signer).
+    pub identity_confirmed: bool,
 }
 
 const fn outcome(passed: bool) -> Outcome {
@@ -239,6 +248,9 @@ pub(crate) fn build_report(input: &ReportInput<'_>, opts: &VerifyOptions) -> Ver
         if seg.is_executable() {
             records.push(executable_signed_record(seg, opts));
         }
+        if let Some(r) = wasm_header_record(seg, facts) {
+            records.push(r);
+        }
         if seg.is_signed() {
             records.push(signature_record(seg, &facts.sig, opts));
         }
@@ -249,17 +261,34 @@ pub(crate) fn build_report(input: &ReportInput<'_>, opts: &VerifyOptions) -> Ver
         .iter()
         .zip(input.facts)
         .filter(|(seg, _)| seg.is_executable())
-        .map(|(seg, facts)| VerifiedExecutable {
-            segment_id: seg.header.segment_id,
-            segment_type: seg.header.seg_type,
-            byte_length: seg.header.payload_length,
-            sha256: facts.payload_sha256.unwrap_or([0; 32]),
+        .map(|(seg, facts)| {
+            let payload_sha = facts.payload_sha256.unwrap_or([0; 32]);
+            let (module_offset, module_length, module_sha256) = match facts.wasm {
+                Some(WasmPayloadFacts::Headed(s) | WasmPayloadFacts::Bare(s)) => {
+                    (s.offset, s.len, s.sha256)
+                }
+                // Refused header (the report fails) or not a WASM segment:
+                // the code is the whole payload, and a refused header leaves
+                // nothing runnable (the report is not ok).
+                Some(WasmPayloadFacts::Rejected(_)) => (0, 0, [0; 32]),
+                None => (0, seg.header.payload_length, payload_sha),
+            };
+            VerifiedExecutable {
+                segment_id: seg.header.segment_id,
+                segment_type: seg.header.seg_type,
+                byte_length: seg.header.payload_length,
+                sha256: payload_sha,
+                module_offset,
+                module_length,
+                module_sha256,
+            }
         })
         .collect();
     VerificationReport {
         rvf_identity: input.identity,
         byte_length: input.container_bytes,
         ok,
+        identity_confirmed: input.identity_confirmed,
         segment_count: segments.len(),
         executables,
         records,
@@ -336,6 +365,27 @@ fn stream_profile_record(delivery: Delivery, opts: &VerifyOptions) -> Verificati
         Delivery::Buffered => (Outcome::Fail, DetailCode::StreamProfileDowngrade),
     };
     container_record(CheckKind::StreamProfile, outcome, detail)
+}
+
+/// The `WasmHeader` record: only for a payload that carries one (or a header
+/// that is refused). A bare module adds no record, so existing record sets are
+/// unchanged.
+fn wasm_header_record(seg: &ParsedSegment, facts: &SegmentFacts) -> Option<VerificationRecord> {
+    match facts.wasm? {
+        WasmPayloadFacts::Bare(_) => None,
+        WasmPayloadFacts::Headed(_) => Some(segment_record(
+            CheckKind::WasmHeader,
+            Outcome::Pass,
+            seg,
+            DetailCode::WasmHeaderAccepted,
+        )),
+        WasmPayloadFacts::Rejected(e) => Some(segment_record(
+            CheckKind::WasmHeader,
+            Outcome::Fail,
+            seg,
+            DetailCode::WasmHeaderRejected(e),
+        )),
+    }
 }
 
 fn executable_signed_record(seg: &ParsedSegment, opts: &VerifyOptions) -> VerificationRecord {

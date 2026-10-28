@@ -1,6 +1,7 @@
 //! Typed reasons a verification check produced its outcome.
 
 use crate::stream::StreamError;
+use crate::wasm_payload::WasmPayloadError;
 use core::fmt;
 
 /// Why a check produced its outcome.
@@ -66,6 +67,10 @@ pub enum DetailCode {
     StreamModuleValidated,
     /// A streamed module failed incremental validation or policy.
     StreamModuleRejected,
+    /// A `WASM` payload carried a valid `WasmHeader`; the module after it is what is checked and run.
+    WasmHeaderAccepted,
+    /// A `WASM` payload carried a header that is malformed or lies about its length.
+    WasmHeaderRejected(WasmPayloadError),
     /// A stream descriptor or frame was refused, for this reason.
     StreamRefused(StreamError),
 }
@@ -117,6 +122,8 @@ impl fmt::Display for DetailCode {
             Self::StreamCompleted => "stream completed",
             Self::StreamModuleValidated => "streamed module validated under policy",
             Self::StreamModuleRejected => "streamed module failed validation or policy",
+            Self::WasmHeaderAccepted => "WASM header validated and stripped",
+            Self::WasmHeaderRejected(_) => "WASM header malformed or inconsistent with its payload",
             Self::StreamRefused(_) => "stream descriptor or frame refused",
         };
         f.write_str(s)

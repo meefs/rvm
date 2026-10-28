@@ -435,7 +435,7 @@ impl VerifiedContextProfile {
         if actual != report.rvf_identity || actual != *expected_identity.as_bytes() {
             return Err(ContextProfileError::IdentityMismatch);
         }
-        if !report.ok {
+        if !report.admissible() {
             return Err(ContextProfileError::UnverifiedRvf);
         }
         let segments = walk(data).map_err(|_| ContextProfileError::InvalidRvf)?;

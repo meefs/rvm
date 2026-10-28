@@ -59,6 +59,9 @@ pub enum CheckKind {
     StreamModule = 12,
     /// A stream frame was refused and counted against the fault budget.
     StreamFault = 13,
+    /// A `WASM` segment payload carries an `rvf-runtime` `WasmHeader`: it was
+    /// validated and stripped, or refused (rvm#84 item 2).
+    WasmHeader = 14,
 }
 
 /// The result of one check.
@@ -99,17 +102,36 @@ pub struct VerifiedExecutable {
     pub segment_id: u64,
     /// RVF segment type discriminator.
     pub segment_type: u8,
-    /// Exact executable payload length.
+    /// Exact executable payload length (the whole segment payload, including
+    /// any `WasmHeader`).
     pub byte_length: u64,
     /// SHA-256 of the executable payload bytes.
     pub sha256: [u8; 32],
+    /// Offset of the code within the payload: 64 when an `rvf-runtime`
+    /// `WasmHeader` precedes the module (validated, and not part of the code),
+    /// otherwise 0.
+    pub module_offset: u64,
+    /// Length of the code that will run: the module without its header.
+    pub module_length: u64,
+    /// SHA-256 of the code that will run. Equal to [`Self::sha256`] when there
+    /// is no header.
+    pub module_sha256: [u8; 32],
 }
 
 impl VerifiedExecutable {
-    /// Whether `module` is exactly the payload represented by this identity.
+    /// Whether `module` is exactly the code this identity represents: the
+    /// module bytes of the segment, without any `WasmHeader`. This is the check
+    /// every start performs on the bytes it is about to admit.
     #[must_use]
     pub fn matches(&self, module: &[u8]) -> bool {
-        self.byte_length == module.len() as u64 && self.sha256 == sha256(module)
+        self.module_length == module.len() as u64 && self.module_sha256 == sha256(module)
+    }
+
+    /// Whether `payload` is exactly the whole segment payload (header
+    /// included) that was verified.
+    #[must_use]
+    pub fn matches_payload(&self, payload: &[u8]) -> bool {
+        self.byte_length == payload.len() as u64 && self.sha256 == sha256(payload)
     }
 }
 
@@ -125,7 +147,18 @@ pub struct VerificationReport {
     /// Container size in bytes.
     pub byte_length: u64,
     /// True when no record failed.
+    ///
+    /// **`ok` is not an admission decision.** It says every check that ran
+    /// passed; on a stage-ordered stream that has not yet confirmed its
+    /// identity it can be true while [`Self::identity_confirmed`] is false.
+    /// Wherever authority is granted (a package, a capability, a start) the
+    /// gate is [`Self::admissible`], never `ok` alone.
     pub ok: bool,
+    /// True when [`Self::rvf_identity`] was computed from, or verified against,
+    /// the container bytes. False when it is only the signer's claim (a
+    /// stage-ordered stream ends `CompleteUnverified` until
+    /// `finish_identity` re-reads the body). ADR-160 item 8.
+    pub identity_confirmed: bool,
     /// How many segments were examined.
     pub segment_count: usize,
     /// Executable payload identities retained for verify-before-load binding.
@@ -143,6 +176,13 @@ pub struct VerificationReport {
 }
 
 impl VerificationReport {
+    /// Whether this report may be acted on: every check passed **and** the
+    /// identity is confirmed. This is the only gate that grants authority.
+    #[must_use]
+    pub const fn admissible(&self) -> bool {
+        self.ok && self.identity_confirmed
+    }
+
     /// The failing records.
     #[must_use]
     pub fn failures(&self) -> Vec<&VerificationRecord> {
@@ -170,7 +210,7 @@ impl VerificationReport {
     /// individual failures read [`VerificationReport::failures`] instead;
     /// this is the shorthand for "refuse and say roughly why".
     pub fn into_result(self) -> RvfResult<Self> {
-        if self.ok {
+        if self.admissible() {
             return Ok(self);
         }
         if self.first_failure(CheckKind::CapabilityMapping).is_some() {
@@ -283,6 +323,7 @@ pub fn verify(data: &[u8], opts: &VerifyOptions) -> RvfResult<VerificationReport
             facts: &facts,
             meta: Declarations { meta_payloads },
             delivery: Delivery::Buffered,
+            identity_confirmed: true,
         },
         opts,
     ))

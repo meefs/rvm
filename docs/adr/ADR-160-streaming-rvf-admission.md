@@ -310,3 +310,86 @@ the Decision above disagree, this section records what was built and why.
     `finish_identity` rebuilds each segment's leaf list from the persisted bytes
     (32 bytes per chunk, one segment at a time) and compares it with the signed
     chunk-table hash, which is the same commitment.
+20. **`ok` is not an admission; `identity_confirmed` is (rvm#84 item 1).**
+    Amends item 8 and note 6. A stage-ordered stream ends `CompleteUnverified`,
+    and until `finish_identity` re-reads the body the report's `rvf_identity` is
+    only the signer's claim. Before this change that report had `ok == true` and
+    `VerifiedPackage::from_report` accepted it, so a package could be minted from
+    a claimed identity (the session withheld its own copy, but the public report
+    and constructor did not). Now:
+    - `VerificationReport` has `identity_confirmed`, and
+      `VerificationReport::admissible()` is `ok && identity_confirmed`.
+      `ok` keeps one meaning: **no check record failed**. It is not a grant of
+      authority and is documented as such. The buffered paths hash the bytes
+      themselves, so their reports are always confirmed; a streamed report is
+      confirmed when the stream completed with the identity `Verified` (file
+      order) or when `finish_identity` succeeds (it flips the flag on the
+      session's report).
+    - `VerifiedPackage::from_report` requires `identity_confirmed` and refuses
+      with the new `HostError::IdentityUnconfirmed`; `into_result` requires
+      `admissible()`. Every constructor of authority (`Instance::create`,
+      `start`, `start_verified`, `install_capabilities`) takes a `VerifiedPackage`
+      or a `VerifiedModule`, so none can be reached from an unconfirmed report.
+    - `StreamSession` completes a stage-ordered stream with `package() == None`
+      and builds the package in `promote`, after `finish_identity` succeeded.
+    - Intended difference between the streamed and buffered reports for
+      stage-ordered delivery: `identity_confirmed` (the differential test
+      asserts it explicitly). The existing test that asserted the report was
+      `ok` "because the pin matched the claim" (`review_findings.rs`, RV-03) was
+      changed to also assert the report is not admissible and mints no package;
+      its old expectation encoded the defect.
+21. **`rvf-runtime` WASM segments carry a `WasmHeader` (rvm#84 item 2).**
+    `RvfStore::embed_wasm` (rvf-runtime 0.4.0) stores a 64-byte `WasmHeader`
+    (magic 0x5256574D, bytes `4D 57 56 52`) followed by the bytecode; RVM used to
+    hand the whole payload to the WASM parser and refuse it. `rvm_rvf::wasm_payload`
+    now detects the magic on `SEG_TYPE_WASM` payloads, validates the header
+    (version 1, role and target in range, uncompressed, reserved zero, nonzero
+    `bytecode_size`, and `bytecode_size` equal to the bytes that follow, too few
+    or too many) and strips it. A payload without the magic is a bare module,
+    exactly as before. Any inconsistency is a failing `CheckKind::WasmHeader`
+    record and the report is not `ok`; the streaming session refuses with
+    `SessionError::WasmHeader` and no header or surplus byte reaches
+    `StreamingModuleValidator` or the stored module.
+    - `VerifiedExecutable` keeps `byte_length`/`sha256` for the whole payload
+      (what the segment hash and signature cover, header included) and gains
+      `module_offset`, `module_length`, `module_sha256` for the code. `matches`
+      and `VerifiedPackage::accepts_wasm` compare the **code**; `matches_payload`
+      compares the whole payload. Handing a host the whole payload (header
+      included) is refused.
+    - `bytecode_hash` in the header is not checked: `rvf-runtime` fills it with a
+      private non-cryptographic function (its source says so), not SHAKE-256.
+      The module's authenticity is the segment content hash, the signature (both
+      cover header and code) and the recorded SHA-256 of the code.
+    - `embed_wasm` writes the segment **unsigned** with the runtime's default
+      checksum. The buffered loader admits it only under
+      `allow_unsigned_executable` (a development posture) or after the package
+      is re-signed. The **stream path refuses the file as written**
+      (`WeakChecksum`, note 6): to stream such a payload, repackage it with a
+      SHAKE-256 checksum. Tested: the real payload repackaged that way streams
+      through `Instance::start_verified`; the unmodified file is refused.
+    - Chunks are at least 4 KiB, so a session sees the 64-byte header inside its
+      first chunk; the scanner is tested at every split point regardless.
+    - Evidence: fixture `crates/rvm-rvf/tests/fixtures/runtime-embed-wasm.rvf`
+      written by a real `embed_wasm` call (rvf-runtime =0.4.0, generator
+      `fixtures/generator/embed_wasm.rs`); tests `rvm-rvf/tests/wasm_header.rs`,
+      `rvm-launch/tests/wasm_header_e2e.rs`.
+22. **A failed session exposes no admissible report; `StreamComplete` means
+    admitted (review of PR #87, F1/F2).** The admission layer builds its report
+    when the last chunk arrives, before the session's later checks (replay pin,
+    `finish_identity`, module validation). `StreamAdmission::finish_identity`
+    sets `identity_confirmed` as soon as the verifier confirms, so a session
+    that then failed `promote` with `Replay` (or failed module validation on the
+    last segment) still held an admissible report, from which
+    `VerifiedPackage::from_report` could mint a package for the buffered
+    `Instance::start(bytes)` path, bypassing replay protection. Minimal sound
+    fix: `StreamSession::report()` returns an admissible report only while the
+    session state is `Complete` (and `Complete` is only left for `Failed` or
+    `Poisoned`, never re-entered); a non-admissible report is still returned to
+    explain a refusal. The package is minted only in `promote`, after the pin
+    check. A caller holding the admission layer directly (`StreamAdmission`)
+    owns its own replay decision; the flag there means "identity confirmed", not
+    "pin passed". `StreamComplete` is now written by `promote` when the package
+    is admitted (identity confirmed and pin passed), so a stage-ordered stream
+    that later fails `finish_identity` or the pin leaves no completion record,
+    only the poison/rejection record. Regression tests:
+    `rvm-launch/tests/failed_session_report.rs`.

@@ -129,7 +129,18 @@ fn rv03_unverifiable_identity_yields_no_module_and_no_package() {
     }
     assert_eq!(session.state(), SessionState::Complete);
     assert_eq!(session.stream_state(), StreamState::CompleteUnverified);
-    assert!(session.report().unwrap().ok, "the pin matched the claim");
+    // Behaviour change (rvm#84 item 1): this used to assert only that `ok` was
+    // true "because the pin matched the claim", which let a report built on a
+    // claimed-only identity look admissible. `ok` still means the checks
+    // passed (the pin did match the claim), but the report now says the
+    // identity is not confirmed and no `VerifiedPackage` can be built from it.
+    let report = session.report().unwrap();
+    assert!(report.ok, "the pin matched the claim");
+    assert!(!report.identity_confirmed && !report.admissible());
+    assert_eq!(
+        rvm_host::VerifiedPackage::from_report(report),
+        Err(rvm_host::HostError::IdentityUnconfirmed)
+    );
     assert_ne!(
         session.report().unwrap().rvf_identity,
         rvm_rvf::sha256(&body)

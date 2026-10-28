@@ -126,6 +126,7 @@ pub fn verify_with_descriptor(
                 meta_payloads: meta,
             },
             delivery: Delivery::Streamed,
+            identity_confirmed: true,
         },
         opts,
     ))

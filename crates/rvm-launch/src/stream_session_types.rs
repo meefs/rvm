@@ -2,6 +2,7 @@
 //! errors and the report a consumer acts on when a stream is poisoned.
 
 use rvm_rvf::stream::{AdmissionError, PoisonInfo};
+use rvm_rvf::WasmPayloadError;
 use rvm_wasm::ModuleError;
 
 /// Where the session stands.
@@ -29,6 +30,14 @@ pub enum SessionError {
         /// What the validator said.
         error: ModuleError,
     },
+    /// A `WASM` segment carried an `rvf-runtime` `WasmHeader` that is
+    /// malformed or disagrees with the bytes that follow it.
+    WasmHeader {
+        /// The segment that carried it.
+        seg_id: u64,
+        /// What is wrong with it.
+        error: WasmPayloadError,
+    },
     /// The stream completed but the package did not pass ADR-155 admission.
     PackageRefused,
     /// A module was requested before the stream completed.
@@ -54,6 +63,9 @@ impl core::fmt::Display for SessionError {
         match self {
             Self::Stream(e) => write!(f, "{e}"),
             Self::Module { seg_id, error } => write!(f, "module in segment {seg_id}: {error}"),
+            Self::WasmHeader { seg_id, error } => {
+                write!(f, "WASM header in segment {seg_id}: {error}")
+            }
             Self::PackageRefused => f.write_str("the package did not pass admission"),
             Self::NotComplete => f.write_str("the stream is not complete"),
             Self::NoSuchModule => f.write_str("no validated module for that segment"),

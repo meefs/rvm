@@ -5,6 +5,12 @@
 //!
 //! Counts threads named `rvm-rvf-identity`, in a test binary of its own and
 //! serialised, so other tests cannot disturb the count.
+//!
+//! Linux only (RuVector#1277): the worker count is read from `/proc/self/task`,
+//! which exists nowhere else, and std has no portable way to enumerate threads
+//! by name. Off Linux this file compiles to nothing; the worker is still
+//! joined there, it just is not observable from a test.
+#![cfg(target_os = "linux")]
 
 mod common;
 

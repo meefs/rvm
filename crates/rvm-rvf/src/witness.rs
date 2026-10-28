@@ -298,6 +298,7 @@ mod tests {
             CheckKind::StreamComplete,
             CheckKind::StreamModule,
             CheckKind::StreamFault,
+            CheckKind::WasmHeader,
         ] {
             assert!(emits_a_record_for(check));
         }

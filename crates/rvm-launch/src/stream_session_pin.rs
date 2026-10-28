@@ -47,8 +47,19 @@ impl StreamSession<'_> {
         if matches!(self.replay, ReplayProtection::Store { .. }) && !self.pin_recorded {
             return Err(self.reject_replay(StreamError::StaleEpoch, witness));
         }
+        if self.pending_package.is_none() && self.package.is_none() {
+            // Stage order: the report existed before the identity did. It is
+            // admissible only now that `finish_identity` confirmed it.
+            self.pending_package = self
+                .admission
+                .report()
+                .and_then(|r| rvm_host::VerifiedPackage::from_report(r).ok());
+        }
         if let Some(p) = self.pending_package.take() {
             self.package = Some(p);
+            if let (Some(w), Some(b)) = (witness, binding_of(&self.admission)) {
+                w(&StreamEvent::StreamComplete, &b);
+            }
         }
         Ok(())
     }

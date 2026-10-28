@@ -76,7 +76,10 @@ use rvm_rvf::stream::{
     AdmissionError, AdmissionEvent, FrameReader, IdentityStatus, PoisonInfo, ReplayProtection,
     StreamAdmission, StreamPolicy, StreamState,
 };
-use rvm_rvf::{SizePolicy, VerificationReport, VerifyOptions, WitnessContext};
+use rvm_rvf::{
+    SizePolicy, VerificationReport, VerifyOptions, WasmPayloadError, WasmPayloadFacts,
+    WasmPayloadScanner, WitnessContext,
+};
 use rvm_wasm::{ModuleError, ModulePolicy, StreamingModuleValidator};
 use rvm_witness::WitnessLog;
 
@@ -92,6 +95,9 @@ pub(crate) type Emit<'a> = Option<&'a dyn Fn(&StreamEvent, &[u8; 32])>;
 
 pub(crate) struct ExecProgress {
     validator: StreamingModuleValidator,
+    /// Splits an `rvf-runtime` `WasmHeader` off the payload: only module bytes
+    /// reach the validator or `bytes` (rvm#84 item 2).
+    scanner: WasmPayloadScanner,
     bytes: Vec<u8>,
 }
 
@@ -186,10 +192,21 @@ impl<'p> StreamSession<'p> {
         self.failure.as_ref()
     }
 
-    /// The admission report, once the stream completed.
+    /// The admission report. An *admissible* report is returned only while the
+    /// session is `Complete`.
+    ///
+    /// A `Failed` or `Poisoned` session (a replay refusal, a module that failed
+    /// validation) returns `None` if its report would be admissible, because
+    /// the admission layer built it before those later checks and it must not
+    /// be usable to mint a package. A non-admissible report is still returned
+    /// to explain a refusal. On a
+    /// `Complete` stage-ordered session whose identity is not yet confirmed the
+    /// report has `identity_confirmed == false` and is not admissible.
     #[must_use]
     pub fn report(&self) -> Option<&VerificationReport> {
-        self.admission.report()
+        self.admission
+            .report()
+            .filter(|r| self.state == SessionState::Complete || !r.admissible())
     }
 
     /// The verified package, once the stream completed, passed admission and
@@ -380,45 +397,82 @@ impl<'p> StreamSession<'p> {
         let policy = &self.module_policy;
         let progress = self.exec.entry(seg_id).or_insert_with(|| ExecProgress {
             validator: StreamingModuleValidator::new(policy.clone()),
+            scanner: WasmPayloadScanner::new(),
             bytes: Vec::new(),
         });
         let binding = binding_of(&self.admission).unwrap_or([0; 32]);
-        let reject = |error: ModuleError| {
+        let refused = || {
             if let Some(w) = witness {
                 w(&StreamEvent::ModuleRejected { seg_id }, &binding);
             }
+        };
+        let reject = |error: ModuleError| {
+            refused();
             SessionError::Module { seg_id, error }
         };
-        if !payload.is_empty() {
-            progress.validator.push(payload).map_err(reject)?;
-            progress.bytes.extend_from_slice(payload);
+        let reject_header = |error: WasmPayloadError| {
+            refused();
+            SessionError::WasmHeader { seg_id, error }
+        };
+        // Module bytes only: the header (if any) is consumed by the scanner and
+        // never reaches the WASM parser or the stored module.
+        let mut module_err = None;
+        let ExecProgress {
+            validator,
+            scanner,
+            bytes,
+        } = progress;
+        let pushed = scanner.push(payload, |m| {
+            if module_err.is_none() {
+                match validator.push(m) {
+                    Ok(_) => bytes.extend_from_slice(m),
+                    Err(e) => module_err = Some(e),
+                }
+            }
+        });
+        if let Some(e) = module_err {
+            return Err(reject(e));
         }
+        pushed.map_err(reject_header)?;
         if segment_verified {
-            let done = self.exec.remove(&seg_id).expect("module in progress");
-            let validated = done.validator.finish().map_err(reject)?;
+            let ExecProgress {
+                mut validator,
+                scanner,
+                mut bytes,
+            } = self.exec.remove(&seg_id).expect("module in progress");
+            let mut tail = Vec::new();
+            if let WasmPayloadFacts::Rejected(e) = scanner.finish(|m| tail.extend_from_slice(m)) {
+                return Err(reject_header(e));
+            }
+            // A payload shorter than the header magic is a bare module that was
+            // held back until the end.
+            if !tail.is_empty() {
+                validator.push(&tail).map_err(reject)?;
+                bytes.extend_from_slice(&tail);
+            }
+            let validated = validator.finish().map_err(reject)?;
             if let Some(w) = witness {
                 w(&StreamEvent::ModuleValidated { seg_id }, &binding);
             }
-            self.ready.insert(seg_id, (done.bytes, validated));
+            self.ready.insert(seg_id, (bytes, validated));
         }
         Ok(())
     }
 
     fn on_complete(&mut self, witness: Emit<'_>) -> Result<SessionEvent, SessionError> {
-        let package = self
-            .admission
-            .report()
-            .and_then(|r| VerifiedPackage::from_report(r).ok());
-        let Some(p) = package else {
+        // A failed check refuses now. A stage-ordered stream whose checks pass
+        // but whose identity is still only the signer's claim completes with no
+        // package: `from_report` refuses until `finish_identity` confirms it,
+        // and `promote` builds the package then (ADR-160 item 8).
+        let Some(report) = self.admission.report().filter(|r| r.ok) else {
             // The failing checks were written by the witnessed push; the
             // refusal itself is the session's failure.
             self.fail(SessionError::PackageRefused);
             return Err(SessionError::PackageRefused);
         };
-        if let (Some(w), Some(b)) = (witness, binding_of(&self.admission)) {
-            w(&StreamEvent::StreamComplete, &b);
-        }
-        self.pending_package = Some(p);
+        // `StreamComplete` is written by `promote`, once the identity is
+        // confirmed and the replay pin passed (ADR-160 note 22).
+        self.pending_package = VerifiedPackage::from_report(report).ok();
         self.state = SessionState::Complete;
         self.promote(witness)?;
         Ok(SessionEvent::Complete)

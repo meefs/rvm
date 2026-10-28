@@ -373,3 +373,23 @@ the Decision above disagree, this section records what was built and why.
       written by a real `embed_wasm` call (rvf-runtime =0.4.0, generator
       `fixtures/generator/embed_wasm.rs`); tests `rvm-rvf/tests/wasm_header.rs`,
       `rvm-launch/tests/wasm_header_e2e.rs`.
+22. **A failed session exposes no admissible report; `StreamComplete` means
+    admitted (review of PR #87, F1/F2).** The admission layer builds its report
+    when the last chunk arrives, before the session's later checks (replay pin,
+    `finish_identity`, module validation). `StreamAdmission::finish_identity`
+    sets `identity_confirmed` as soon as the verifier confirms, so a session
+    that then failed `promote` with `Replay` (or failed module validation on the
+    last segment) still held an admissible report, from which
+    `VerifiedPackage::from_report` could mint a package for the buffered
+    `Instance::start(bytes)` path, bypassing replay protection. Minimal sound
+    fix: `StreamSession::report()` returns an admissible report only while the
+    session state is `Complete` (and `Complete` is only left for `Failed` or
+    `Poisoned`, never re-entered); a non-admissible report is still returned to
+    explain a refusal. The package is minted only in `promote`, after the pin
+    check. A caller holding the admission layer directly (`StreamAdmission`)
+    owns its own replay decision; the flag there means "identity confirmed", not
+    "pin passed". `StreamComplete` is now written by `promote` when the package
+    is admitted (identity confirmed and pin passed), so a stage-ordered stream
+    that later fails `finish_identity` or the pin leaves no completion record,
+    only the poison/rejection record. Regression tests:
+    `rvm-launch/tests/failed_session_report.rs`.

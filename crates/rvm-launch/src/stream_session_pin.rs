@@ -57,6 +57,9 @@ impl StreamSession<'_> {
         }
         if let Some(p) = self.pending_package.take() {
             self.package = Some(p);
+            if let (Some(w), Some(b)) = (witness, binding_of(&self.admission)) {
+                w(&StreamEvent::StreamComplete, &b);
+            }
         }
         Ok(())
     }

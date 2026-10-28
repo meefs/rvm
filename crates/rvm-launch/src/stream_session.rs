@@ -192,10 +192,21 @@ impl<'p> StreamSession<'p> {
         self.failure.as_ref()
     }
 
-    /// The admission report, once the stream completed.
+    /// The admission report. An *admissible* report is returned only while the
+    /// session is `Complete`.
+    ///
+    /// A `Failed` or `Poisoned` session (a replay refusal, a module that failed
+    /// validation) returns `None` if its report would be admissible, because
+    /// the admission layer built it before those later checks and it must not
+    /// be usable to mint a package. A non-admissible report is still returned
+    /// to explain a refusal. On a
+    /// `Complete` stage-ordered session whose identity is not yet confirmed the
+    /// report has `identity_confirmed == false` and is not admissible.
     #[must_use]
     pub fn report(&self) -> Option<&VerificationReport> {
-        self.admission.report()
+        self.admission
+            .report()
+            .filter(|r| self.state == SessionState::Complete || !r.admissible())
     }
 
     /// The verified package, once the stream completed, passed admission and
@@ -459,9 +470,8 @@ impl<'p> StreamSession<'p> {
             self.fail(SessionError::PackageRefused);
             return Err(SessionError::PackageRefused);
         };
-        if let (Some(w), Some(b)) = (witness, binding_of(&self.admission)) {
-            w(&StreamEvent::StreamComplete, &b);
-        }
+        // `StreamComplete` is written by `promote`, once the identity is
+        // confirmed and the replay pin passed (ADR-160 note 22).
         self.pending_package = VerifiedPackage::from_report(report).ok();
         self.state = SessionState::Complete;
         self.promote(witness)?;

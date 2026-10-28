@@ -175,7 +175,9 @@ fn buffered_once(rate: Option<f64>, body: &[u8]) -> Times {
         .into_iter()
         .find(|s| s.is_executable())
         .unwrap();
-    let module = seg.payload(body).to_vec();
+    // The segment payload may carry an rvf-runtime WasmHeader; the module is
+    // what follows it.
+    let module = rvm_rvf::split_wasm_payload(seg.payload(body)).unwrap().to_vec();
     assert!(report.executables[0].matches(&module));
     let module_at = t0.elapsed();
     let (instance, call) = run_in_wasmi(&module, t0);
